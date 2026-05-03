@@ -17,6 +17,8 @@ RUN apt-get update -q && apt-get install --no-install-recommends -qy \
     libcurl4-openssl-dev \
     libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libx11-dev \
     librtaudio-dev libcli11-dev \
+    libiio-dev libad9361-dev libxml2-dev \
+    nlohmann-json3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install ImPlot (Ubuntu does not package it yet).
@@ -33,6 +35,37 @@ RUN git clone --depth 1 --branch ${IMPLOT_REF} https://github.com/epezent/implot
     && install -m 0644 implot.h implot_internal.h /usr/local/include/ \
     && ldconfig \
     && rm -rf /tmp/implot
+
+# libtinyiiod (iiod protocol library, runtime dep of iio-emu). Not packaged
+# on Ubuntu; build from source. Pin via ARG for reproducibility.
+ARG LIBTINYIIOD_REF=956bce332b166144bf86664db155af3c1c49287a
+RUN git clone https://github.com/analogdevicesinc/libtinyiiod.git /tmp/libtinyiiod \
+    && cd /tmp/libtinyiiod \
+    && git checkout ${LIBTINYIIOD_REF} \
+    && cmake -S . -B build -G Ninja \
+        -DBUILD_EXAMPLES=OFF \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+    && cmake --build build -j"$(nproc)" \
+    && cmake --install build \
+    && ldconfig \
+    && rm -rf /tmp/libtinyiiod
+
+# iio-emu (libiio mock server). Used by qa tests once a Pluto-flavored XML
+# (generated via iio-emu_gen_xml ip:pluto.local on a real device) is
+# vendored under blocks/iio/test/data/. Until then the binary just ships
+# in the image as a follow-up integration-test prerequisite.
+ARG IIO_EMU_REF=cbc0c0419767a30321b627581fbe6f62f1ce4e80
+RUN git clone https://github.com/analogdevicesinc/iio-emu.git /tmp/iio-emu \
+    && cd /tmp/iio-emu \
+    && git checkout ${IIO_EMU_REF} \
+    && cmake -S . -B build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/usr/local \
+    && cmake --build build -j"$(nproc)" \
+    && cmake --install build \
+    && ldconfig \
+    && rm -rf /tmp/iio-emu
 
 # UHD udev rules only. UHD FPGA/firmware images are provided at runtime
 # through UHD_IMAGES_DIR + bind mounts.

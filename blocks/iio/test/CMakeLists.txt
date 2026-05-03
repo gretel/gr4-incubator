@@ -1,0 +1,5 @@
+gr4_incubator_add_ut_test(qa_IIOSource qa_IIOSource.cpp)
+target_link_libraries(qa_IIOSource PRIVATE gr4_incubator::blocks_iio_headers)
+
+gr4_incubator_add_ut_test(qa_IIOSink qa_IIOSink.cpp)
+target_link_libraries(qa_IIOSink PRIVATE gr4_incubator::blocks_iio_headers)
