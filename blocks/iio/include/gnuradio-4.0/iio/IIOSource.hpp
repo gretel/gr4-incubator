@@ -62,7 +62,7 @@ struct IIOSource : Block<IIOSource<T>> {
 
     // AD9361 convenience aliases (only honoured when phy_device=="ad9361-phy")
     double      center_frequency = 868'100'000.0;
-    double      sample_rate      = 2'000'000.0;
+    float       sample_rate      = 2'083'334.0f; // AD9361 minimum
     double      bandwidth        = 200'000.0;
     double      gain             = 40.0;
     std::string gain_mode        = "slow_attack";
