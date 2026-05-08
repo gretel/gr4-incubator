@@ -106,9 +106,14 @@ public:
         if (_buf == nullptr) {
             throw gr::exception("Buffer::setBlockingMode on null buffer");
         }
-        if (const int rc = ::iio_buffer_set_blocking_mode(_buf.get(), blocking); rc != 0) {
-            throwIIO("iio_buffer_set_blocking_mode", -rc);
+        const int rc = ::iio_buffer_set_blocking_mode(_buf.get(), blocking);
+        if (rc == 0 || rc == -ENOSYS) {
+            // ENOSYS: TCP/IIOD backend does not implement blocking-mode toggle
+            // (refill is always blocking on remote backends). Local kernel
+            // buffer accepts it. Either is fine.
+            return;
         }
+        throwIIO("iio_buffer_set_blocking_mode", -rc);
     }
 
     // Negative return = -errno (-EBADF after cancel(), -ETIMEDOUT on timeout).
