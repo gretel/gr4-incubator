@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
     float       sample_rate      = 2'083'334.0F;
     double      center_frequency = 868'100'000.0;
     double      bandwidth        = 200'000.0;
-    double      tx_attenuation   = 10.0;
+    double      tx_gain          = 20.0;
     std::string rf_port          = "A";
     std::size_t buffer_size      = 32'768;
     std::size_t timeout_ms       = 1'000;
@@ -44,7 +44,7 @@ int main(int argc, char** argv) {
     app.add_option("--rate", sample_rate, "Sample rate (Hz, AD9361 alias)");
     app.add_option("--freq", center_frequency, "TX center frequency (Hz, AD9361 alias)");
     app.add_option("--bw", bandwidth, "Bandwidth (Hz, AD9361 alias)");
-    app.add_option("--atten", tx_attenuation, "TX attenuation (dB positive, AD9361 alias)");
+    app.add_option("--gain", tx_gain, "TX gain (0..89 dB, higher = louder; AD9361 alias)");
     app.add_option("--rf-port", rf_port, "AD9361 rf_port_select (A, B)");
     app.add_option("--buffer", buffer_size, "DMA buffer size (samples, pow-of-2)");
     app.add_option("--timeout-ms", timeout_ms, "libiio context timeout (ms)");
@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
 
     gr::Graph fg;
 
-    auto& source = fg.emplaceBlock<gr::testing::NullSource<T>>({
+    auto& source = fg.emplaceBlock<gr::testing::ConstantSource<T>>({
         {"n_samples_max", static_cast<gr::Size_t>(n_samples)},
     });
 
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
         {"sample_rate", sample_rate},
         {"center_frequency", center_frequency},
         {"bandwidth", bandwidth},
-        {"tx_attenuation", tx_attenuation},
+        {"tx_gain", tx_gain},
         {"rf_port", rf_port},
         {"buffer_size", static_cast<gr::Size_t>(buffer_size)},
         {"timeout_ms", static_cast<gr::Size_t>(timeout_ms)},

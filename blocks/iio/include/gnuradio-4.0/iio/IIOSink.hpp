@@ -1,14 +1,14 @@
 // Generic libiio v0.26 TX block. Mirror of IIOSource.
 //
 // AD9361/Pluto convenience aliases (`center_frequency`, `sample_rate`,
-// `bandwidth`, `tx_attenuation`, `rf_port`) auto-map to AD9361 IIO
+// `bandwidth`, `tx_gain`, `rf_port`) auto-map to AD9361 IIO
 // attribute paths only when `phy_device == "ad9361-phy"`. For other
 // devices, leave aliases at defaults and use the generic `attributes` map.
 //
 // AD9361 LO mapping note: TX LO lives at altvoltage1/frequency on the
-// ad9361-phy device (RX LO is altvoltage0). TX gain is exposed as
-// `tx_attenuation` (positive dB), written internally as
-// `hardwaregain = -tx_attenuation`.
+// ad9361-phy device (RX LO is altvoltage0). TX gain is exposed as `tx_gain`
+// (positive dB, higher = louder; range 0..89), written internally as AD9361
+// hardwaregain = tx_gain - 89 (always negative, 0 = full scale).
 
 #pragma once
 
@@ -41,7 +41,7 @@ struct IIOSink : Block<IIOSink<T>> {
                             "AD9361 / Adalm-Pluto. Device-agnostic via uri / device / "
                             "phy_device + attributes property_map. AD9361 convenience "
                             "aliases (center_frequency, sample_rate, bandwidth, "
-                            "tx_attenuation, rf_port) auto-apply when "
+                            "tx_gain, rf_port) auto-apply when "
                             "phy_device==\"ad9361-phy\".">;
     using Base        = Block<IIOSink<T>>;
     using Base::Base; // expose property_map-init constructor
@@ -65,7 +65,11 @@ struct IIOSink : Block<IIOSink<T>> {
     double      center_frequency = 868'100'000.0;
     float       sample_rate      = 2'083'334.0F; // AD9361 minimum; float matches PortMetaInfo auto-forward convention
     double      bandwidth        = 200'000.0;
-    double      tx_attenuation   = 10.0; // positive dB, written as hardwaregain = -tx_attenuation
+    // tx_gain mirrors Soapy / IIOSource convention: higher = louder, range 0..89.
+    // Written internally as AD9361 hardwaregain = tx_gain - 89 (always negative,
+    // 0 = full scale, -89 = silent). Default is intentionally low for safety
+    // when an antenna is connected.
+    double      tx_gain          = 20.0;
     std::string rf_port          = "A";
 
     // DMA + timing
@@ -73,7 +77,7 @@ struct IIOSink : Block<IIOSink<T>> {
     gr::Size_t timeout_ms          = 1'000U;
     gr::Size_t tx_tail_pad_samples = 32'768U; // zero-pad before cancel for clean carrier ramp-down
 
-    GR_MAKE_REFLECTABLE(IIOSink, in, uri, device, phy_device, channels, attributes, center_frequency, sample_rate, bandwidth, tx_attenuation, rf_port, buffer_size, timeout_ms, tx_tail_pad_samples);
+    GR_MAKE_REFLECTABLE(IIOSink, in, uri, device, phy_device, channels, attributes, center_frequency, sample_rate, bandwidth, tx_gain, rf_port, buffer_size, timeout_ms, tx_tail_pad_samples);
 
     // ---------- lifecycle ---------------------------------------------------
 
@@ -116,7 +120,7 @@ struct IIOSink : Block<IIOSink<T>> {
             if (new_.contains("bandwidth")) {
                 applyAd9361Bandwidth();
             }
-            if (new_.contains("tx_attenuation") || new_.contains("rf_port")) {
+            if (new_.contains("tx_gain") || new_.contains("rf_port")) {
                 applyAd9361PerChannel();
             }
         }
@@ -274,8 +278,11 @@ private:
         if (phyCh == nullptr) {
             throw gr::exception("ad9361-phy voltage0 output channel not found");
         }
-        // hardwaregain on TX path is negated: positive tx_attenuation = lower TX power
-        detail::writeAttrLL(phyCh, "hardwaregain", -static_cast<long long>(tx_attenuation));
+        // tx_gain (0..89, higher = louder) → AD9361 hardwaregain = tx_gain - 89
+        // (always negative; 0 dB = full scale, -89 dB = silent). Clamped so an
+        // out-of-range tx_gain doesn't push hardwaregain above 0 (which AD9361 rejects).
+        const long long hwGainDb = std::clamp<long long>(static_cast<long long>(tx_gain) - 89LL, -89LL, 0LL);
+        detail::writeAttrLL(phyCh, "hardwaregain", hwGainDb);
         detail::writeAttr(phyCh, "rf_port_select", rf_port);
     }
 
