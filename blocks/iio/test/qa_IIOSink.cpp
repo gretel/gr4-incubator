@@ -27,7 +27,7 @@ const suite IIOSinkTests = [] {
         expect(blk.center_frequency == 868'100'000.0_d);
         expect(blk.sample_rate == 2'083'334.0_f);
         expect(blk.bandwidth == 200'000.0_d);
-        expect(blk.tx_attenuation == 10.0_d);
+        expect(blk.tx_gain == 20.0_d);
         expect(blk.rf_port == "A");
         expect(blk.buffer_size == 32'768U);
         expect(blk.timeout_ms == 1'000U);
@@ -49,7 +49,7 @@ const suite IIOSinkTests = [] {
         gr::property_map             empty_old;
         gr::property_map             new_settings{
             {"center_frequency", 900'000'000.0},
-            {"tx_attenuation", 25.0},
+            {"tx_gain", 25.0},
         };
         expect(nothrow([&] { blk.settingsChanged(empty_old, new_settings); }));
     };
