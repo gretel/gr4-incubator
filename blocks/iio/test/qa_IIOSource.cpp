@@ -27,7 +27,7 @@ const suite IIOSourceTests = [] {
         expect(blk.channels[1] == "voltage1");
         expect(blk.attributes.empty());
         expect(blk.center_frequency == 868'100'000.0_d);
-        expect(blk.sample_rate == 2'000'000.0_d);
+        expect(blk.sample_rate == 2'083'334.0_f);
         expect(blk.bandwidth == 200'000.0_d);
         expect(blk.gain == 40.0_d);
         expect(blk.gain_mode == "slow_attack");

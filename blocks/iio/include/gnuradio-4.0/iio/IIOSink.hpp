@@ -63,7 +63,7 @@ struct IIOSink : Block<IIOSink<T>> {
 
     // AD9361 convenience aliases (only honoured when phy_device=="ad9361-phy")
     double      center_frequency = 868'100'000.0;
-    double      sample_rate      = 2'000'000.0;
+    float       sample_rate      = 2'083'334.0F; // AD9361 minimum; float matches PortMetaInfo auto-forward convention
     double      bandwidth        = 200'000.0;
     double      tx_attenuation   = 10.0; // positive dB, written as hardwaregain = -tx_attenuation
     std::string rf_port          = "A";

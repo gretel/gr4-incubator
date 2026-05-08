@@ -25,7 +25,7 @@ const suite IIOSinkTests = [] {
         expect(blk.channels[1] == "voltage1");
         expect(blk.attributes.empty());
         expect(blk.center_frequency == 868'100'000.0_d);
-        expect(blk.sample_rate == 2'000'000.0_d);
+        expect(blk.sample_rate == 2'083'334.0_f);
         expect(blk.bandwidth == 200'000.0_d);
         expect(blk.tx_attenuation == 10.0_d);
         expect(blk.rf_port == "A");

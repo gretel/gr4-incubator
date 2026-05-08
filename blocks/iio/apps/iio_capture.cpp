@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     std::string uri              = "local:";
     std::string device           = "cf-ad9361-lpc";
     std::string phy_device       = "ad9361-phy";
-    double      sample_rate      = 2'000'000.0;
+    float       sample_rate      = 2'083'334.0F;
     double      center_frequency = 868'100'000.0;
     double      bandwidth        = 200'000.0;
     double      gain             = 40.0;
