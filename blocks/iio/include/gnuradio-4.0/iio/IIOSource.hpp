@@ -164,7 +164,7 @@ struct IIOSource : Block<IIOSource<T>> {
         const std::size_t n     = std::min<std::size_t>(scans, output.size());
 
         for (std::size_t i = 0; i < n; ++i) {
-            const std::byte* p = start + i * step;
+            const std::byte* p = start + static_cast<std::ptrdiff_t>(i) * step;
             std::int16_t     i_raw{};
             std::int16_t     q_raw{};
             std::memcpy(&i_raw, p, sizeof(std::int16_t));
@@ -181,6 +181,10 @@ struct IIOSource : Block<IIOSource<T>> {
 
         output.publish(n);
         _consecutiveErrorCount = 0;
+        // SoapySource pattern: signal progress so the singleThreadedBlocking
+        // scheduler doesn't park us on the inactivity watchdog.
+        this->progress->incrementAndGet();
+        this->progress->notify_all();
         return gr::work::Status::OK;
     }
 

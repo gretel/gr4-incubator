@@ -157,7 +157,7 @@ struct IIOSink : Block<IIOSink<T>> {
         }
 
         for (std::size_t i = 0; i < capacity; ++i) {
-            std::byte*   p = start + i * step;
+            std::byte*   p = start + static_cast<std::ptrdiff_t>(i) * step;
             std::int16_t i_raw{};
             std::int16_t q_raw{};
             if constexpr (std::is_same_v<T, std::complex<std::int16_t>>) {
@@ -187,6 +187,10 @@ struct IIOSink : Block<IIOSink<T>> {
         }
 
         (void)input.consume(capacity);
+        // SoapySink pattern: signal progress so the singleThreadedBlocking
+        // scheduler doesn't park us on the inactivity watchdog.
+        this->progress->incrementAndGet();
+        this->progress->notify_all();
         return gr::work::Status::OK;
     }
 
