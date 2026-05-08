@@ -151,16 +151,13 @@ struct IIOSink : Block<IIOSink<T>> {
             return gr::work::Status::INSUFFICIENT_INPUT_ITEMS;
         }
 
-        // iio_buffer_push always transmits the full DMA buffer. A partial
-        // fill (input.size() < capacity) followed by push would radiate stale
-        // tail bytes between every short batch. Wait for a full batch instead;
-        // the scheduler will accumulate upstream input and re-enter when ready.
-        if (input.size() < capacity) {
-            (void)input.consume(0U);
-            return gr::work::Status::INSUFFICIENT_INPUT_ITEMS;
-        }
+        // iio_buffer_push always transmits the full DMA buffer. For variable-
+        // size LoRa bursts (TxQueueSource emits per-burst), accept whatever
+        // input is available and zero-pad the remainder of the DMA buffer so
+        // the burst tail isn't held back waiting for the buffer to fill.
+        const std::size_t n = std::min<std::size_t>(input.size(), capacity);
 
-        for (std::size_t i = 0; i < capacity; ++i) {
+        for (std::size_t i = 0; i < n; ++i) {
             std::byte*   p = start + static_cast<std::ptrdiff_t>(i) * step;
             std::int16_t i_raw{};
             std::int16_t q_raw{};
@@ -178,6 +175,11 @@ struct IIOSink : Block<IIOSink<T>> {
             std::memcpy(p, &i_raw, sizeof(std::int16_t));
             std::memcpy(p + sizeof(std::int16_t), &q_raw, sizeof(std::int16_t));
         }
+        // Zero-pad remainder so unfilled DMA region radiates silence, not stale.
+        if (n < capacity) {
+            std::memset(start + static_cast<std::ptrdiff_t>(n) * step, 0,
+                        static_cast<std::size_t>(capacity - n) * static_cast<std::size_t>(step));
+        }
 
         const ssize_t bytes = _buf.push();
         if (bytes < 0) {
@@ -190,7 +192,7 @@ struct IIOSink : Block<IIOSink<T>> {
             }
         }
 
-        (void)input.consume(capacity);
+        (void)input.consume(n);
         // SoapySink pattern: signal progress so the singleThreadedBlocking
         // scheduler doesn't park us on the inactivity watchdog.
         this->progress->incrementAndGet();
