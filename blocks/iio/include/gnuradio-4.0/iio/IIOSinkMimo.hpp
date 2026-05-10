@@ -175,6 +175,20 @@ struct IIOSinkMimo : Block<IIOSinkMimo<T>> {
                 static_cast<std::size_t>(capacity - n) * static_cast<std::size_t>(step));
         }
 
+        // Ensure TX LO is powered up before pushing data.  The driver may
+        // leave it powered down after init (ENSM transition through ALERT,
+        // previous shutdown, etc.).  Powering it here, right before push,
+        // is the most reliable point — it works regardless of init ordering.
+        if (!_txLoWarmed && _phy != nullptr) {
+            if (auto* txLo = ::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true)) {
+                try {
+                    detail::writeAttrLL(txLo, "powerdown", 0LL);
+                } catch (const std::exception&) {
+                }
+            }
+            _txLoWarmed = true;
+        }
+
         const ssize_t bytes = _buf.push();
         if (bytes < 0) {
             const int err = -static_cast<int>(bytes);
@@ -200,6 +214,7 @@ private:
     ::iio_device*                 _streamDev = nullptr;
     std::array<::iio_channel*, 4> _chans{};
     detail::Buffer                _buf;
+    bool                          _txLoWarmed{false};
 
     [[nodiscard]] bool isAd9361() const noexcept { return phy_device == "ad9361-phy"; }
 
@@ -233,6 +248,20 @@ private:
             }
             detail::enableChannel(ch);
             _chans[i] = ch;
+        }
+
+        // Power up TX LO before any mode transition.  The firmware may
+        // leave it powered down after a previous shutdown, and the ENSM
+        // transition through ALERT (if set_mode_at_init is true) would
+        // power it down again during mode set — but we apply this AFTER
+        // the transition so the LO stays on during buffer push.
+        if (_phy != nullptr) {
+            if (auto* txLo = ::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true)) {
+                try {
+                    detail::writeAttrLL(txLo, "powerdown", 0LL);
+                } catch (const std::exception&) {
+                }
+            }
         }
 
         if (isAd9361()) {
