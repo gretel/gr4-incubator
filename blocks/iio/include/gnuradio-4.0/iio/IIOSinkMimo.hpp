@@ -68,8 +68,9 @@ struct IIOSinkMimo : Block<IIOSinkMimo<T>> {
     gr::Size_t buffer_size         = 32'768U;
     gr::Size_t timeout_ms          = 1'000U;
     gr::Size_t tx_tail_pad_samples = 32'768U;
+    bool       tx_lo_powerdown     = true;
 
-    GR_MAKE_REFLECTABLE(IIOSinkMimo, in0, in1, uri, device, phy_device, channels, tx_chains, attributes, center_frequency, sample_rate, bandwidth, tx_gain, set_mode_at_init, buffer_size, timeout_ms, tx_tail_pad_samples);
+    GR_MAKE_REFLECTABLE(IIOSinkMimo, in0, in1, uri, device, phy_device, channels, tx_chains, attributes, center_frequency, sample_rate, bandwidth, tx_gain, set_mode_at_init, buffer_size, timeout_ms, tx_tail_pad_samples, tx_lo_powerdown);
 
     void start() { reinitDevice(); }
 
@@ -354,7 +355,7 @@ private:
             }
         }
         _buf.cancel();
-        if (isAd9361() && _phy != nullptr) {
+        if (tx_lo_powerdown && isAd9361() && _phy != nullptr) {
             ::iio_channel* txLo = ::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true);
             if (txLo != nullptr) {
                 detail::writeAttrLL(txLo, "powerdown", 1LL);

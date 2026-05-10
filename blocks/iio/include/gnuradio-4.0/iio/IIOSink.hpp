@@ -78,7 +78,11 @@ struct IIOSink : Block<IIOSink<T>> {
     gr::Size_t timeout_ms          = 1'000U;
     gr::Size_t tx_tail_pad_samples = 32'768U; // zero-pad before cancel for clean carrier ramp-down
 
-    GR_MAKE_REFLECTABLE(IIOSink, in, uri, device, phy_device, channels, attributes, center_frequency, sample_rate, bandwidth, tx_gain, rf_port, buffer_size, timeout_ms, tx_tail_pad_samples);
+    // Power down TX LO after DMA cancel to prevent self-leakage into RX path.
+    // Default true. Set to false when TX must stay powered between bursts.
+    bool tx_lo_powerdown = true;
+
+    GR_MAKE_REFLECTABLE(IIOSink, in, uri, device, phy_device, channels, attributes, center_frequency, sample_rate, bandwidth, tx_gain, rf_port, buffer_size, timeout_ms, tx_tail_pad_samples, tx_lo_powerdown);
 
     // ---------- lifecycle ---------------------------------------------------
 
@@ -353,7 +357,7 @@ private:
             }
         }
         _buf.cancel();
-        if (isAd9361() && _phy != nullptr) {
+        if (tx_lo_powerdown && isAd9361() && _phy != nullptr) {
             ::iio_channel* txLo = ::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true);
             if (txLo != nullptr) {
                 detail::writeAttrLL(txLo, "powerdown", 1LL);
