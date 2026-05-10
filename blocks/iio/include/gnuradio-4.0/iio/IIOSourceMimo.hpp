@@ -266,9 +266,6 @@ private:
 
         if (isAd9361()) {
             if (set_mode_at_init && _phy != nullptr) {
-                // Best-effort: ensm_mode is a device-level attribute; debug-attribute
-                // adi,2rx-2tx-mode-enable lives at the device root too. Tolerate
-                // failure (older drivers may not expose it as writable).
                 try {
                     detail::writeAttr(_phy, "ensm_mode", "alert");
                     detail::writeDebugAttr(_phy, "adi,2rx-2tx-mode-enable", "1");
@@ -328,7 +325,13 @@ private:
             if (gain_mode == "manual") {
                 detail::writeAttrLL(phyCh, "hardwaregain", static_cast<long long>(gain));
             }
-            detail::writeAttr(phyCh, "rf_port_select", rx_chains[i]);
+            // rf_port_select may not be writable per-chain on all firmware
+            // (e.g. Pluto tezuka_fw rejects B_BALANCED on voltage1). In 2R2T
+            // mode the AD9361 auto-routes RX1→chain A, RX2→chain B, so the
+            // firmware default is correct — tolerate write failure.
+            if (::iio_channel_attr_write(phyCh, "rf_port_select", rx_chains[i].c_str()) < 0) {
+                std::fprintf(stderr, "IIOSourceMimo: rf_port_select='%s' on %s ignored (firmware default used)\n", rx_chains[i].c_str(), phyNames[i]);
+            }
         }
     }
 

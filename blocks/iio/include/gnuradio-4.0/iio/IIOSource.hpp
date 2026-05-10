@@ -286,7 +286,12 @@ private:
         if (gain_mode == "manual") {
             detail::writeAttrLL(phyCh, "hardwaregain", static_cast<long long>(gain));
         }
-        detail::writeAttr(phyCh, "rf_port_select", rf_port);
+        // rf_port_select may not support all values on all firmware
+        // (e.g. Pluto tezuka_fw rejects B_BALANCED). Best-effort: fall
+        // back to firmware default if the write fails.
+        if (::iio_channel_attr_write(phyCh, "rf_port_select", rf_port.c_str()) < 0) {
+            std::fprintf(stderr, "IIOSource: rf_port_select='%s' on voltage0 ignored (firmware default used)\n", rf_port.c_str());
+        }
     }
 
     void applyAttributes(bool isOutput) {
