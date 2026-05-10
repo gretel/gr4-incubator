@@ -282,9 +282,13 @@ private:
         if (_phy == nullptr) {
             return;
         }
-        ::iio_channel* phyCh = ::iio_device_find_channel(_phy, "voltage0", /*output=*/true);
+        // TX chain B uses ad9361-phy voltage1 OUTPUT.  Detect via rf_port:
+        // "A"/"A_BALANCED" → voltage0 (default), "B"/"B_BALANCED" → voltage1.
+        const bool       isChainB = (rf_port == "B" || rf_port == "B_BALANCED");
+        const char*      phyName  = isChainB ? "voltage1" : "voltage0";
+        ::iio_channel* phyCh = ::iio_device_find_channel(_phy, phyName, /*output=*/true);
         if (phyCh == nullptr) {
-            throw gr::exception("ad9361-phy voltage0 output channel not found");
+            throw gr::exception(std::format("ad9361-phy {} output channel not found", phyName));
         }
         // tx_gain (0..89, higher = louder) → AD9361 hardwaregain = tx_gain - 89
         // (always negative; 0 dB = full scale, -89 dB = silent). Clamped so an
