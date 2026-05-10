@@ -239,7 +239,7 @@ private:
             if (set_mode_at_init && _phy != nullptr) {
                 try {
                     detail::writeAttr(_phy, "ensm_mode", "alert");
-                    detail::writeAttr(_phy, "adi,2rx-2tx-mode-enable", "1");
+                    detail::writeDebugAttr(_phy, "adi,2rx-2tx-mode-enable", "1");
                     detail::writeAttr(_phy, "ensm_mode", "fdd");
                 } catch (const std::exception& e) {
                     std::fprintf(stderr, "IIOSinkMimo: 2R2T mode set skipped: %s\n", e.what());

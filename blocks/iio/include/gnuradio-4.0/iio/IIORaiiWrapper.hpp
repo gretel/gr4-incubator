@@ -218,6 +218,18 @@ inline void writeAttr(::iio_device* dev, std::string_view name, std::string_view
     }
 }
 
+inline void writeDebugAttr(::iio_device* dev, std::string_view name, std::string_view value) {
+    if (dev == nullptr) {
+        throw gr::exception(std::format("writeDebugAttr('{}'): device is null", name));
+    }
+    const std::string n(name);
+    const std::string v(value);
+    const ssize_t     rc = ::iio_device_debug_attr_write(dev, n.c_str(), v.c_str());
+    if (rc < 0) {
+        throwIIO(std::format("iio_device_debug_attr_write('{}', '{}')", n, v), static_cast<int>(-rc));
+    }
+}
+
 inline void writeAttrLL(::iio_device* dev, std::string_view name, long long value) {
     if (dev == nullptr) {
         throw gr::exception(std::format("writeAttrLL('{}'): device is null", name));

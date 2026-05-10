@@ -175,6 +175,14 @@ struct IIOSourceMimo : Block<IIOSourceMimo<T>> {
         const std::size_t scans = static_cast<std::size_t>((end - start) / step);
         const std::size_t n     = std::min({scans, output0.size(), output1.size()});
 
+        // DEBUG (2026-05-10): log first N processBulk calls to disambiguate
+        // "0 frames despite clean log".
+        if (_debugCallCount < 20U) {
+            std::fprintf(stderr, "IIOSourceMimo[%zu]: bytes=%zd step=%td scans=%zu out0.size=%zu out1.size=%zu n=%zu\n",
+                         _debugCallCount, bytes, step, scans, output0.size(), output1.size(), n);
+            ++_debugCallCount;
+        }
+
         // Each step is [I0, Q0, I1, Q1] = 4 * sizeof(int16_t) = 8 bytes for AD9361.
         // _buf.first() gives the first I-sample of channel 0; channel 1's I is at
         // offset +2 * sizeof(int16_t) within the same step.
@@ -219,6 +227,7 @@ private:
     std::size_t                   _consecutiveErrorCount = 0;
     std::size_t                   _overflowCount         = 0;
     std::size_t                   _totalOverflowCount    = 0;
+    std::size_t                   _debugCallCount        = 0; // log first N processBulk calls to stderr
 
     [[nodiscard]] bool isAd9361() const noexcept { return phy_device == "ad9361-phy"; }
 
@@ -262,7 +271,7 @@ private:
                 // failure (older drivers may not expose it as writable).
                 try {
                     detail::writeAttr(_phy, "ensm_mode", "alert");
-                    detail::writeAttr(_phy, "adi,2rx-2tx-mode-enable", "1");
+                    detail::writeDebugAttr(_phy, "adi,2rx-2tx-mode-enable", "1");
                     detail::writeAttr(_phy, "ensm_mode", "fdd");
                 } catch (const std::exception& e) {
                     std::fprintf(stderr, "IIOSourceMimo: 2R2T mode set skipped: %s\n", e.what());
