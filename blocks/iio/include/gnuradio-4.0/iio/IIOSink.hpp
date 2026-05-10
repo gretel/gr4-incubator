@@ -23,6 +23,7 @@
 
 #include <gnuradio-4.0/Block.hpp>
 #include <gnuradio-4.0/BlockRegistry.hpp>
+#include <gnuradio-4.0/ValueHelper.hpp>
 
 #include <gnuradio-4.0/iio/IIORaiiWrapper.hpp>
 
@@ -125,8 +126,9 @@ struct IIOSink : Block<IIOSink<T>> {
             }
         }
 
-        // Note: the `attributes` property_map is declared but its hot-update
-        // walker is parked for a follow-up (needs pmtv variant dispatch).
+        if (new_.contains("attributes")) {
+            applyAttributes(/*isOutput=*/true);
+        }
     }
 
     // ---------- processBulk -------------------------------------------------
@@ -243,7 +245,7 @@ private:
             applyAd9361Bandwidth();
             applyAd9361PerChannel();
         }
-        // `attributes` property_map walker parked for follow-up.
+        applyAttributes(/*isOutput=*/true);
 
         _buf = detail::Buffer(_streamDev, static_cast<std::size_t>(buffer_size),
             /*cyclic=*/false);
@@ -288,6 +290,42 @@ private:
         detail::writeAttr(phyCh, "rf_port_select", rf_port);
     }
 
+    void applyAttributes(bool isOutput) {
+        if (attributes.empty()) {
+            return;
+        }
+        ::iio_device* dev = _phy ? _phy : _streamDev;
+        for (const auto& [key, value] : attributes) {
+            const auto slash = key.find('/');
+            std::string   attrName;
+            ::iio_channel* ch = nullptr;
+
+            if (slash != decltype(key)::npos) {
+                const std::string chName(key.begin(), key.begin() + static_cast<long>(slash));
+                attrName = std::string(key.begin() + static_cast<long>(slash) + 1, key.end());
+                ch       = ::iio_device_find_channel(dev, chName.c_str(), isOutput);
+                if (ch == nullptr && _streamDev != _phy && dev == _phy) {
+                    ch = ::iio_device_find_channel(_streamDev, chName.c_str(), isOutput);
+                }
+            } else {
+                attrName = std::string(key);
+            }
+
+            pmt::ValueVisitor([&](const auto& v) {
+                using ValT = std::decay_t<decltype(v)>;
+                if constexpr (std::is_integral_v<ValT> || std::is_floating_point_v<ValT>) {
+                    const long long ll = static_cast<long long>(v);
+                    if (ch) detail::writeAttrLL(ch, attrName, ll);
+                    else    detail::writeAttrLL(dev, attrName, ll);
+                } else if constexpr (std::is_same_v<ValT, std::string_view>) {
+                    const std::string s(v);
+                    if (ch) detail::writeAttr(ch, attrName, s);
+                    else    detail::writeAttr(dev, attrName, s);
+                }
+            }).visit(value);
+        }
+    }
+
     void tailPadAndCancel() {
         if (!_buf || _chans[0] == nullptr || tx_tail_pad_samples == 0U) {
             _buf.cancel();
@@ -315,6 +353,12 @@ private:
             }
         }
         _buf.cancel();
+        if (isAd9361() && _phy != nullptr) {
+            ::iio_channel* txLo = ::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true);
+            if (txLo != nullptr) {
+                detail::writeAttrLL(txLo, "powerdown", 1LL);
+            }
+        }
     }
 };
 
