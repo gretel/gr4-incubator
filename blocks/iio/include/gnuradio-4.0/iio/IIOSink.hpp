@@ -261,7 +261,15 @@ private:
             return;
         }
         // TX LO on AD9361 is altvoltage1 (RX LO is altvoltage0).
-        detail::writeAttrLL(::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true), "frequency", static_cast<long long>(center_frequency));
+        auto* txLo = ::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true);
+        if (txLo == nullptr) {
+            return;
+        }
+        detail::writeAttrLL(txLo, "frequency", static_cast<long long>(center_frequency));
+        try {
+            detail::writeAttrLL(txLo, "powerdown", 0LL);
+        } catch (const std::exception&) {
+        }
     }
 
     void applyAd9361SampleRate() {

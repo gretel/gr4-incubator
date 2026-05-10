@@ -260,7 +260,18 @@ private:
         if (_phy == nullptr) {
             return;
         }
-        detail::writeAttrLL(::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true), "frequency", static_cast<long long>(center_frequency));
+        auto* txLo = ::iio_device_find_channel(_phy, "altvoltage1", /*output=*/true);
+        if (txLo == nullptr) {
+            return;
+        }
+        detail::writeAttrLL(txLo, "frequency", static_cast<long long>(center_frequency));
+        // Ensure TX LO is powered up — firmware may leave it down after
+        // a previous shutdown or if the ENSM transition skipped LO enable.
+        try {
+            detail::writeAttrLL(txLo, "powerdown", 0LL);
+        } catch (const std::exception&) {
+            // non-fatal; LO may already be up
+        }
     }
 
     void applyAd9361SampleRate() {
@@ -289,7 +300,11 @@ private:
             }
             const long long hwGainDb = std::clamp<long long>(static_cast<long long>(tx_gain) - 89LL, -89LL, 0LL);
             detail::writeAttrLL(phyCh, "hardwaregain", hwGainDb);
-            detail::writeAttr(phyCh, "rf_port_select", tx_chains[i]);
+            try {
+                detail::writeAttr(phyCh, "rf_port_select", tx_chains[i]);
+            } catch (const std::exception& e) {
+                std::fprintf(stderr, "IIOSinkMimo: rf_port_select='%s' on %s ignored (firmware default used): %s\n", tx_chains[i].c_str(), phyNames[i], e.what());
+            }
         }
     }
 
