@@ -283,6 +283,15 @@ private:
 
         _buf = detail::Buffer(_streamDev, static_cast<std::size_t>(buffer_size), /*cyclic=*/false);
         _buf.setBlockingMode(true);
+
+        // Disable sync start: the tezuka_fw firmware arms the TX DMA by
+        // default and waits for a sync pulse before transmitting.  Without
+        // this write, iio_buffer_push queues data but the AD9361 never
+        // reads it — nothing appears on the spectrum analyzer.
+        try {
+            detail::writeAttrLL(_streamDev, "sync_start_enable", 0LL);
+        } catch (const std::exception&) {
+        }
     }
 
     void applyAd9361CenterFrequency() {
