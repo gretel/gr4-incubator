@@ -1,7 +1,8 @@
-// Host smoke for IIOSourceMimo: defaults, lifecycle robustness,
-// channel/chain validation. Live-device coverage is gated behind the
-// FISH_BALL_URI environment variable so CI without hardware skips
-// silently.
+// Host smoke for IIOSource<T, 2> (unified MIMO variant). Tests defaults,
+// lifecycle robustness, validation, and live-device reinit.
+//
+// Previously tested the separate IIOSourceMimo block; now validates the
+// unified IIOSource template with nPorts=2.
 
 #include <complex>
 #include <cstdint>
@@ -11,16 +12,16 @@
 
 #include <boost/ut.hpp>
 
-#include <gnuradio-4.0/iio/IIOSourceMimo.hpp>
+#include <gnuradio-4.0/iio/IIOSource.hpp>
 
 using namespace gr::incubator::iio;
 using namespace boost::ut;
 
 namespace {
 
-const suite IIOSourceMimoTests = [] {
+const suite IIOSourceMimoUnifiedTests = [] {
     "default property values"_test = [] {
-        IIOSourceMimo<std::complex<float>> blk;
+        IIOSource<std::complex<float>, 2> blk;
         expect(blk.uri == "local:");
         expect(blk.device == "cf-ad9361-lpc");
         expect(blk.phy_device == "ad9361-phy");
@@ -44,13 +45,13 @@ const suite IIOSourceMimoTests = [] {
     };
 
     "int16 specialisation default constructible"_test = [] {
-        IIOSourceMimo<std::complex<std::int16_t>> blk;
+        IIOSource<std::complex<std::int16_t>, 2> blk;
         expect(blk.uri == "local:");
         expect(blk.channels.size() == 4_u);
     };
 
     "settingsChanged is no-op pre-start"_test = [] {
-        IIOSourceMimo<std::complex<float>> blk;
+        IIOSource<std::complex<float>, 2> blk;
         gr::property_map                   empty_old;
         gr::property_map                   new_settings{
             {"center_frequency", 900'000'000.0},
@@ -60,15 +61,15 @@ const suite IIOSourceMimoTests = [] {
     };
 
     "wrong channels size throws on start"_test = [] {
-        IIOSourceMimo<std::complex<float>> blk;
-        blk.uri        = "ip:127.0.0.1:1"; // unreachable; throw should be from validation, not network
+        IIOSource<std::complex<float>, 2> blk;
+        blk.uri        = "ip:127.0.0.1:1";
         blk.channels   = {"voltage0", "voltage1"};
         blk.timeout_ms = 100U;
         expect(throws([&] { blk.start(); }));
     };
 
     "wrong rx_chains size throws on start"_test = [] {
-        IIOSourceMimo<std::complex<float>> blk;
+        IIOSource<std::complex<float>, 2> blk;
         blk.uri        = "ip:127.0.0.1:1";
         blk.rx_chains  = {"A_BALANCED"};
         blk.timeout_ms = 100U;
@@ -76,26 +77,24 @@ const suite IIOSourceMimoTests = [] {
     };
 
     "bad uri throws on start"_test = [] {
-        IIOSourceMimo<std::complex<float>> blk;
-        blk.uri        = "ip:127.0.0.1:1"; // reserved port — guaranteed unreachable
+        IIOSource<std::complex<float>, 2> blk;
+        blk.uri        = "ip:127.0.0.1:1";
         blk.timeout_ms = 100U;
         expect(throws([&] { blk.start(); }));
     };
 
     "stop on never-started block is safe"_test = [] {
-        IIOSourceMimo<std::complex<float>> blk;
+        IIOSource<std::complex<float>, 2> blk;
         expect(nothrow([&] { blk.stop(); }));
     };
 
-    // Live-device smoke: opt-in via FISH_BALL_URI=ip:<host>. Confirms the
-    // 4-channel context resolves and reinit succeeds end-to-end without
-    // sample capture.
+    // Live-device smoke: opt-in via FISH_BALL_URI=ip:<host>.
     "FISH_BALL_URI live reinit"_test = [] {
         const char* uri = std::getenv("FISH_BALL_URI");
         if (uri == nullptr) {
-            return; // skip
+            return;
         }
-        IIOSourceMimo<std::complex<float>> blk;
+        IIOSource<std::complex<float>, 2> blk;
         blk.uri         = uri;
         blk.timeout_ms  = 2'000U;
         blk.buffer_size = 4'096U;
