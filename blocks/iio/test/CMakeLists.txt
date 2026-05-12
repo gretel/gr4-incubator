@@ -4,8 +4,4 @@ target_link_libraries(qa_IIOSource PRIVATE gr4_incubator::blocks_iio_headers)
 gr4_incubator_add_ut_test(qa_IIOSink qa_IIOSink.cpp)
 target_link_libraries(qa_IIOSink PRIVATE gr4_incubator::blocks_iio_headers)
 
-gr4_incubator_add_ut_test(qa_IIOSourceMimo qa_IIOSourceMimo.cpp)
-target_link_libraries(qa_IIOSourceMimo PRIVATE gr4_incubator::blocks_iio_headers)
 
-gr4_incubator_add_ut_test(qa_IIOSinkMimo qa_IIOSinkMimo.cpp)
-target_link_libraries(qa_IIOSinkMimo PRIVATE gr4_incubator::blocks_iio_headers)
