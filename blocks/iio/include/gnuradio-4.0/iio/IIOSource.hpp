@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
@@ -143,6 +144,10 @@ struct IIOSource : Block<IIOSource<T>> {
         return gr::work::Status::OK;
     }
 
+    // Overflow counter — exposed as atomic for telemetry (SoapySource
+    // convention). lora_trx reads it via overflow_ptr in build_rx_graph().
+    std::atomic<gr::Size_t> overflowCount{};
+
 private:
     // ---------- device init helpers ----------------------------------------
 
@@ -246,6 +251,7 @@ private:
 
     void bumpOverflow(int err) {
         ++_consecutiveErrorCount; ++_overflowCount; ++_totalOverflowCount;
+        overflowCount.fetch_add(1U, std::memory_order_relaxed);
         if (_overflowCount == 1U || _overflowCount == 10U || _overflowCount == 100U || _overflowCount == 1000U)
             std::fprintf(stderr, "IIOSource: refill error errno=%d (count=%zu, total=%zu)\n", err, _overflowCount, _totalOverflowCount);
         if (max_overflow_count != 0U && _overflowCount > max_overflow_count)
