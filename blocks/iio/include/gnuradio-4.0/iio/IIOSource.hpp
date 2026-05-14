@@ -81,17 +81,7 @@ struct IIOSource : Block<IIOSource<T>> {
 
     // ---------- lifecycle ---------------------------------------------------
 
-    void start() {
-        std::fprintf(stderr, "IIOSource::start enter\\n");
-        try {
-            reinitDevice();
-            std::fprintf(stderr, "IIOSource::start ok buf=%d step=%td\\n", !!_buf, _buf.step());
-        } catch (const std::exception& e) {
-            std::fprintf(stderr, "IIOSource::start EXCEPTION: %s\\n", e.what());
-        } catch (...) {
-            std::fprintf(stderr, "IIOSource::start UNKNOWN EXCEPTION\\n");
-        }
-    }
+    void start() { reinitDevice(); }
 
     void stop() noexcept {
         try { _buf.cancel(); _buf.reset(); _ctx.reset(); }
@@ -120,18 +110,11 @@ struct IIOSource : Block<IIOSource<T>> {
     // ---------- processBulk -------------------------------------------------
 
     [[nodiscard]] gr::work::Status processBulk(OutputSpanLike auto& output) {
-        if (!_buf) { std::fprintf(stderr, "IIOSource: no buffer\\n"); output.publish(0U); return gr::work::Status::INSUFFICIENT_INPUT_ITEMS; }
+        if (!_buf) { output.publish(0U); return gr::work::Status::INSUFFICIENT_INPUT_ITEMS; }
         const ssize_t bytes = _buf.refill();
         if (bytes < 0) {
             const int err = -static_cast<int>(bytes);
             output.publish(0U);
-            if (_consecutiveErrorCount == 0 || _consecutiveErrorCount % 50 == 0) {
-                if (err == ETIMEDOUT) {
-                    std::fprintf(stderr, "IIOSource: refill ETIMEDOUT (buf %zu)\\n", (std::size_t)_buf.step());
-                } else {
-                    std::fprintf(stderr, "IIOSource: refill err=%d\\n", err);
-                }
-            }
             switch (err) {
             case ETIMEDOUT: return gr::work::Status::OK;
             case EBADF:     return gr::work::Status::DONE;
@@ -139,12 +122,11 @@ struct IIOSource : Block<IIOSource<T>> {
             }
         }
         const std::ptrdiff_t step = _buf.step();
-        if (step <= 0 || _chans[0] == nullptr) { output.publish(0U); std::fprintf(stderr, "IIOSource: step=%td ch=%p\\n", step, (void*)_chans[0]); return gr::work::Status::INSUFFICIENT_INPUT_ITEMS; }
+        if (step <= 0 || _chans[0] == nullptr) { output.publish(0U); return gr::work::Status::INSUFFICIENT_INPUT_ITEMS; }
         const auto* const start = static_cast<const std::byte*>(_buf.first(_chans[0]));
         const auto* const end   = static_cast<const std::byte*>(_buf.end());
         const std::size_t scans = static_cast<std::size_t>((end - start) / step);
         const std::size_t n     = std::min<std::size_t>(scans, output.size());
-        std::fprintf(stderr, "IIOSource: produced %zu scans\\n", n);
         for (std::size_t i = 0; i < n; ++i) {
             const std::byte* p = start + static_cast<std::ptrdiff_t>(i) * step;
             std::int16_t i_raw{}, q_raw{};
