@@ -115,6 +115,8 @@ struct IIOSource : Block<IIOSource<T>> {
         if (bytes < 0) {
             const int err = -static_cast<int>(bytes);
             output.publish(0U);
+            this->progress->incrementAndGet();
+            this->progress->notify_all();
             switch (err) {
             case ETIMEDOUT: return gr::work::Status::OK;
             case EBADF:     return gr::work::Status::DONE;
