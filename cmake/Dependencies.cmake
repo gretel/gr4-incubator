@@ -93,6 +93,33 @@ function(_gr4_incubator_find_soapysdr out_target)
   message(FATAL_ERROR "SoapySDR not found. Install a system SoapySDR development package.")
 endfunction()
 
+function(_gr4_incubator_find_libiio out_target)
+  # CMake config first. libiio v0.26 exports `iio::iio` via iio-config.cmake;
+  # some distros patch the export to `libiio::libiio` or `LibIIO::iio`.
+  find_package(iio CONFIG QUIET)
+  if(NOT TARGET iio::iio)
+    find_package(libiio CONFIG QUIET)
+  endif()
+  if(NOT TARGET iio::iio AND NOT TARGET libiio::libiio AND NOT TARGET libiio::iio)
+    find_package(LibIIO CONFIG QUIET)
+  endif()
+  foreach(candidate iio::iio libiio::libiio libiio::iio LibIIO::iio LibIIO::libiio)
+    if(TARGET ${candidate})
+      set(${out_target} ${candidate} PARENT_SCOPE)
+      return()
+    endif()
+  endforeach()
+
+  # pkg-config fallback. `libiio.pc` is the canonical Ubuntu/Buildroot name.
+  _gr4_incubator_optional_pkgconfig(_libiio_pkg _libiio_found libiio)
+  if(_libiio_found)
+    set(${out_target} "${_libiio_pkg}" PARENT_SCOPE)
+    return()
+  endif()
+
+  message(FATAL_ERROR "libiio not found. Install a system package providing libiio (Ubuntu/Debian: libiio-dev).")
+endfunction()
+
 function(_gr4_incubator_find_boost_ut out_target)
   find_package(boost_ut CONFIG QUIET)
   if(TARGET boost_ut::ut)
@@ -369,6 +396,13 @@ function(gr4_incubator_resolve_dependencies)
     set(GR4I_SOAPYSDR_TARGET "${_soapysdr_target}" PARENT_SCOPE)
   else()
     set(GR4I_SOAPYSDR_TARGET "" PARENT_SCOPE)
+  endif()
+
+  if(ENABLE_EXAMPLES OR ENABLE_PLUGINS OR ENABLE_TESTING)
+    _gr4_incubator_find_libiio(_libiio_target)
+    set(GR4I_LIBIIO_TARGET "${_libiio_target}" PARENT_SCOPE)
+  else()
+    set(GR4I_LIBIIO_TARGET "" PARENT_SCOPE)
   endif()
 
   _gr4_incubator_find_nlohmann_json(_nlohmann_json_target)

@@ -12,6 +12,7 @@ add_subdirectory(audio)
 add_subdirectory(sigmf)
 add_subdirectory(soapysdr)
 add_subdirectory(http)
+add_subdirectory(iio)
 
 add_library(gr4_incubator_blocks_headers INTERFACE)
 add_library(gr4_incubator::blocks_headers ALIAS gr4_incubator_blocks_headers)
@@ -25,4 +26,5 @@ target_link_libraries(gr4_incubator_blocks_headers INTERFACE
   gr4_incubator::blocks_zeromq_headers
   gr4_incubator::blocks_soapysdr_headers
   gr4_incubator::blocks_http_headers
+  gr4_incubator::blocks_iio_headers
 )
