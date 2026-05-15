@@ -35,6 +35,7 @@ const suite IIOSourceTests = [] {
         expect(blk.buffer_size == 32'768U);
         expect(blk.timeout_ms == 1'000U);
         expect(blk.max_overflow_count == 10U);
+        expect(blk.non_blocking == false);
     };
 
     "int16 specialisation default constructible"_test = [] {
@@ -55,6 +56,15 @@ const suite IIOSourceTests = [] {
             {"center_frequency", 900'000'000.0},
             {"gain", 20.0},
             {"timeout_ms", static_cast<gr::Size_t>(2'000U)},
+        };
+        expect(nothrow([&] { blk.settingsChanged(empty_old, new_settings); }));
+    };
+
+    "non_blocking in settingsChanged pre-start is safe"_test = [] {
+        IIOSource<std::complex<float>> blk;
+        gr::property_map               empty_old;
+        gr::property_map               new_settings{
+            {"non_blocking", true},
         };
         expect(nothrow([&] { blk.settingsChanged(empty_old, new_settings); }));
     };

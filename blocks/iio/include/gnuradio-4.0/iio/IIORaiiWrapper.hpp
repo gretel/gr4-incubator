@@ -108,9 +108,9 @@ public:
         }
         const int rc = ::iio_buffer_set_blocking_mode(_buf.get(), blocking);
         if (rc == 0 || rc == -ENOSYS) {
-            // ENOSYS: TCP/IIOD backend does not implement blocking-mode toggle
-            // (refill is always blocking on remote backends). Local kernel
-            // buffer accepts it. Either is fine.
+            if (rc == -ENOSYS && !blocking) {
+                std::fprintf(stderr, "IIO: setBlockingMode(false) returned ENOSYS — non_blocking has no effect on IIOD/remote backend\n");
+            }
             return;
         }
         throwIIO("iio_buffer_set_blocking_mode", -rc);

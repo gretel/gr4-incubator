@@ -141,7 +141,6 @@ struct IIOSource : Block<IIOSource<T>> {
             }
         }
         output.publish(n);
-        _consecutiveErrorCount = 0;
         this->progress->incrementAndGet();
         this->progress->notify_all();
         return gr::work::Status::OK;
@@ -159,7 +158,6 @@ private:
     ::iio_device*                 _streamDev = nullptr;
     std::array<::iio_channel*, 2> _chans{};
     detail::Buffer                _buf;
-    std::size_t                   _consecutiveErrorCount = 0;
     std::size_t                   _overflowCount         = 0;
     std::size_t                   _totalOverflowCount    = 0;
 
@@ -167,7 +165,7 @@ private:
 
     void reinitDevice() {
         _buf.cancel(); _buf.reset(); _ctx.reset();
-        _phy = nullptr; _streamDev = nullptr; _chans = {}; _consecutiveErrorCount = 0;
+        _phy = nullptr; _streamDev = nullptr; _chans = {};
         _ctx = detail::Context(uri);
         _ctx.setTimeout(static_cast<unsigned int>(timeout_ms));
         if (!phy_device.empty()) _phy = _ctx.findDevice(phy_device);
@@ -253,7 +251,7 @@ private:
     }
 
     void bumpOverflow(int err) {
-        ++_consecutiveErrorCount; ++_overflowCount; ++_totalOverflowCount;
+        ++_overflowCount; ++_totalOverflowCount;
         overflowCount.fetch_add(1U, std::memory_order_relaxed);
         if (_overflowCount == 1U || _overflowCount == 10U || _overflowCount == 100U || _overflowCount == 1000U)
             std::fprintf(stderr, "IIOSource: refill error errno=%d (count=%zu, total=%zu)\n", err, _overflowCount, _totalOverflowCount);
