@@ -74,10 +74,11 @@ struct IIOSource : Block<IIOSource<T>> {
     gr::Size_t timeout_ms         = 1'000U;
     gr::Size_t max_overflow_count = 10U;
     bool       non_blocking       = false;  ///< true = poll mode; false = blocking refill
+    bool       debug              = false;  ///< log per-refill sample count
 
     GR_MAKE_REFLECTABLE(IIOSource, out, uri, device, phy_device, channels, attributes,
         center_frequency, sample_rate, bandwidth, gain, gain_mode, rf_port,
-        buffer_size, timeout_ms, max_overflow_count, non_blocking);
+        buffer_size, timeout_ms, max_overflow_count, non_blocking, debug);
 
     // ---------- lifecycle ---------------------------------------------------
 
@@ -129,6 +130,9 @@ struct IIOSource : Block<IIOSource<T>> {
         const auto* const end   = static_cast<const std::byte*>(_buf.end());
         const std::size_t scans = static_cast<std::size_t>((end - start) / step);
         const std::size_t n     = std::min<std::size_t>(scans, output.size());
+        if (debug) {
+            std::fprintf(stderr, "IIOSource: refill bytes=%zd step=%td scans=%zu publish=%zu\n", bytes, step, scans, n);
+        }
         for (std::size_t i = 0; i < n; ++i) {
             const std::byte* p = start + static_cast<std::ptrdiff_t>(i) * step;
             std::int16_t i_raw{}, q_raw{};
