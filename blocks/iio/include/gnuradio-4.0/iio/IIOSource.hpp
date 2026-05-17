@@ -112,39 +112,56 @@ struct IIOSource : Block<IIOSource<T>> {
 
     [[nodiscard]] gr::work::Status processBulk(OutputSpanLike auto& output) {
         if (!_buf) { output.publish(0U); return gr::work::Status::INSUFFICIENT_INPUT_ITEMS; }
+
+        // 1. Refill from IIO hardware — append to ring buffer
         const ssize_t bytes = _buf.refill();
         if (bytes < 0) {
             const int err = -static_cast<int>(bytes);
+            if (err == ETIMEDOUT) {
+                // Timed-out refill may still have partial data. If ring has
+                // samples, drain them first; otherwise return OK and try again.
+                if (_ringTail == _ringHead) {
+                    output.publish(0U);
+                    this->progress->incrementAndGet();
+                    this->progress->notify_all();
+                    return gr::work::Status::OK;
+                }
+            } else {
+                output.publish(0U);
+                this->progress->incrementAndGet();
+                this->progress->notify_all();
+                if (err == EBADF) return gr::work::Status::DONE;
+                bumpOverflow(err);
+                return gr::work::Status::OK;
+            }
+        } else if (bytes > 0) {
+            const std::ptrdiff_t step = _buf.step();
+            if (step > 0 && _chans[0] != nullptr) {
+                const auto* const start = static_cast<const std::byte*>(_buf.first(_chans[0]));
+                const auto* const end   = static_cast<const std::byte*>(_buf.end());
+                const std::size_t scans = static_cast<std::size_t>((end - start) / step);
+                if (debug) {
+                    std::fprintf(stderr, "IIOSource: refill bytes=%zd step=%td scans=%zu\n", bytes, step, scans);
+                }
+                appendRefill(start, step, scans);
+            }
+        }
+
+        // 2. Drain ring buffer into output port
+        const std::size_t available = _ringTail - _ringHead;
+        if (available == 0U) {
             output.publish(0U);
             this->progress->incrementAndGet();
             this->progress->notify_all();
-            switch (err) {
-            case ETIMEDOUT: return gr::work::Status::OK;
-            case EBADF:     return gr::work::Status::DONE;
-            default:        bumpOverflow(err); return gr::work::Status::OK;
-            }
+            return gr::work::Status::OK;
         }
-        const std::ptrdiff_t step = _buf.step();
-        if (step <= 0 || _chans[0] == nullptr) { output.publish(0U); return gr::work::Status::INSUFFICIENT_INPUT_ITEMS; }
-        const auto* const start = static_cast<const std::byte*>(_buf.first(_chans[0]));
-        const auto* const end   = static_cast<const std::byte*>(_buf.end());
-        const std::size_t scans = static_cast<std::size_t>((end - start) / step);
-        const std::size_t n     = std::min<std::size_t>(scans, output.size());
-        if (debug) {
-            std::fprintf(stderr, "IIOSource: refill bytes=%zd step=%td scans=%zu publish=%zu\n", bytes, step, scans, n);
-        }
-        for (std::size_t i = 0; i < n; ++i) {
-            const std::byte* p = start + static_cast<std::ptrdiff_t>(i) * step;
-            std::int16_t i_raw{}, q_raw{};
-            std::memcpy(&i_raw, p, 2); std::memcpy(&q_raw, p + 2, 2);
-            if constexpr (std::is_same_v<T, std::complex<std::int16_t>>) {
-                output[i] = std::complex<std::int16_t>(i_raw, q_raw);
-            } else {
-                constexpr float scale = 1.0f / 2048.0f;
-                output[i] = std::complex<float>(static_cast<float>(i_raw) * scale, static_cast<float>(q_raw) * scale);
-            }
+        const std::size_t n = std::min(available, output.size());
+        for (std::size_t i = 0U; i < n; ++i) {
+            output[i] = _ring[_ringHead % _ring.size()];
+            ++_ringHead;
         }
         output.publish(n);
+        compactRing();
         this->progress->incrementAndGet();
         this->progress->notify_all();
         return gr::work::Status::OK;
@@ -154,6 +171,68 @@ struct IIOSource : Block<IIOSource<T>> {
     // convention). lora_trx reads it via overflow_ptr in build_rx_graph().
     std::atomic<gr::Size_t> overflowCount{};
 
+    // ---------- ring buffer: accumulate across refills for continuous output ---
+    //
+    // Local IIO (uri=local:) returns a fresh kernel buffer per refill. Between
+    // refills there can be boundaries that drop/duplicate samples, corrupting
+    // the stride decimation. The ring buffer stitches refills into a continuous
+    // stream so downstream blocks see no discontinuities.
+    //
+    // Remote IIO (uri=ip:...) doesn't need this — iiod concatenates kernel
+    // buffers into the TCP stream — but the ring buffer is harmless there too.
+
+    void appendRefill(const std::byte* start, std::ptrdiff_t step, std::size_t scans) {
+        ensureRingCapacity(scans);
+        for (std::size_t i = 0U; i < scans; ++i) {
+            const std::byte* p = start + static_cast<std::ptrdiff_t>(i) * step;
+            std::int16_t i_raw{}, q_raw{};
+            std::memcpy(&i_raw, p, 2);
+            std::memcpy(&q_raw, p + 2, 2);
+            if constexpr (std::is_same_v<T, std::complex<std::int16_t>>) {
+                _ring[_ringTail % _ring.size()] = std::complex<std::int16_t>(i_raw, q_raw);
+            } else {
+                constexpr float scale = 1.0f / 2048.0f;
+                _ring[_ringTail % _ring.size()] = std::complex<float>(
+                    static_cast<float>(i_raw) * scale,
+                    static_cast<float>(q_raw) * scale);
+            }
+            ++_ringTail;
+        }
+    }
+
+    void ensureRingCapacity(std::size_t incoming) {
+        if (_ring.empty()) {
+            // 8× buffer_size gives plenty of margin for scheduling jitter
+            _ring.resize(static_cast<std::size_t>(buffer_size) * 8U);
+        }
+        const std::size_t capacity = _ring.size();
+        const std::size_t used = _ringTail - _ringHead;
+        if (used + incoming > capacity) {
+            // Ran out of space — grow (shouldn't happen in practice)
+            _ring.resize(static_cast<std::size_t>(static_cast<double>(capacity) * 1.5 + incoming));
+        }
+    }
+
+    void compactRing() {
+        const std::size_t capacity = _ring.size();
+        const std::size_t used = _ringTail - _ringHead;
+        // Compact when read cursor is past the halfway point and used is small
+        if (used < capacity / 4U && _ringHead > capacity / 2U) {
+            const std::size_t headMod = _ringHead % capacity;
+            if (headMod + used <= capacity) {
+                // Simple case: contiguous elements, single memmove
+                std::memmove(_ring.data(), &_ring[headMod], used * sizeof(T));
+            } else {
+                // Wrapped case: two segments
+                const std::size_t first = capacity - headMod;
+                std::memmove(_ring.data(), &_ring[headMod], first * sizeof(T));
+                std::memmove(&_ring[first], _ring.data(), (used - first) * sizeof(T));
+            }
+            _ringHead = 0U;
+            _ringTail = used;
+        }
+    }
+
 private:
     // ---------- device init helpers ----------------------------------------
 
@@ -162,8 +241,11 @@ private:
     ::iio_device*                 _streamDev = nullptr;
     std::array<::iio_channel*, 2> _chans{};
     detail::Buffer                _buf;
-    std::size_t                   _overflowCount         = 0;
-    std::size_t                   _totalOverflowCount    = 0;
+    std::vector<T>                _ring{};
+    std::size_t                   _ringHead = 0U;   ///< read cursor (absolute sample index)
+    std::size_t                   _ringTail = 0U;   ///< write cursor (absolute sample index)
+    std::size_t                   _overflowCount      = 0;
+    std::size_t                   _totalOverflowCount = 0;
 
     [[nodiscard]] bool isAd9361() const noexcept { return phy_device == "ad9361-phy"; }
 
