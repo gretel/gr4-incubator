@@ -209,7 +209,7 @@ struct IIOSource : Block<IIOSource<T>> {
         const std::size_t used = _ringTail - _ringHead;
         if (used + incoming > capacity) {
             // Ran out of space — grow (shouldn't happen in practice)
-            _ring.resize(static_cast<std::size_t>(static_cast<double>(capacity) * 1.5 + incoming));
+            _ring.resize(static_cast<std::size_t>(static_cast<double>(capacity) * 1.5 + static_cast<double>(incoming)));
         }
     }
 
