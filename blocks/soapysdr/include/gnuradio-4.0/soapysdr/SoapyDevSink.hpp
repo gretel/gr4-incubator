@@ -67,7 +67,7 @@ the same driver string, enabling full-duplex TX/RX operation.)">;
     Annotated<bool, "wait_burst_ack", Doc<"send END_BURST and wait for BURST_ACK on stop">>                                wait_burst_ack        = true;
     Annotated<std::uint32_t, "burst_ack_timeout_us", Unit<"us">, Doc<"timeout for BURST_ACK polling">>                     burst_ack_timeout_us  = 5'000'000U;
 
-    GR_MAKE_REFLECTABLE(SoapySink, in, device, device_parameter, master_clock_rate, clock_source, sample_rate, num_channels, tx_antennae, frequency, tx_bandwidths, tx_gains, gain_mode, frequency_correction, dc_offset_mode, dc_offset, iq_balance, time_source, reference_clock_rate, stream_args, tune_args, frontend_mapping, channel_offset, device_settings, max_chunk_size, max_time_out_us, max_underflow_count, verbose_underflow, burst_taper_enabled, burst_ramp_time, burst_taper_type, burst_shape_param, burst_safety_rampdown, timed_tx, tx_start_delay_s, wait_burst_ack, burst_ack_timeout_us);
+    GR_MAKE_REFLECTABLE(SoapyDevSink, in, device, device_parameter, master_clock_rate, clock_source, sample_rate, num_channels, tx_antennae, frequency, tx_bandwidths, tx_gains, gain_mode, frequency_correction, dc_offset_mode, dc_offset, iq_balance, time_source, reference_clock_rate, stream_args, tune_args, frontend_mapping, channel_offset, device_settings, max_chunk_size, max_time_out_us, max_underflow_count, verbose_underflow, burst_taper_enabled, burst_ramp_time, burst_taper_type, burst_shape_param, burst_safety_rampdown, timed_tx, tx_start_delay_s, wait_burst_ack, burst_ack_timeout_us);
 
     Device                          _device{};
     Device::Stream<T, SOAPY_SDR_TX> _txStream{};
