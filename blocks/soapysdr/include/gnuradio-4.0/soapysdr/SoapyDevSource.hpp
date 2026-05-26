@@ -83,9 +83,9 @@ Tested with RTL-SDR and LimeSDR drivers.)">;
 
     GR_MAKE_REFLECTABLE(SoapySource, clk_in, out, device, device_parameter, master_clock_rate, clock_source, sample_rate, num_channels, rx_antennae, frequency, rx_bandwidths, rx_gains, gain_mode, frequency_correction, lo_offset, dc_offset_mode, dc_offset, iq_balance, time_source, reference_clock_rate, stream_args, tune_args, frontend_mapping, device_settings, max_chunk_size, max_time_out_us, max_overflow_count, max_fragment_count, verbose_overflow, overflow_recovery, overflow_reactivate_threshold, trigger_name, emit_timing_tags, emit_meta_info, tag_interval, dc_blocker_enabled, dc_blocker_cutoff, ppm_estimator_cutoff, ppm_tag_threshold);
 
-    soapy::Device                          _device{};
-    soapy::Device::Stream<T, SOAPY_SDR_RX> _rxStream{};
-    soapy::Kwargs                          _devKwargs{};
+    Device                          _device{};
+    Device::Stream<T, SOAPY_SDR_RX> _rxStream{};
+    Kwargs                          _devKwargs{};
     bool                                   _ioThreadDone = true;
     std::atomic<gr::Size_t>                _overflowCount{0U};
     std::atomic<gr::Size_t>                _fragmentCount{0U};
@@ -190,7 +190,7 @@ Tested with RTL-SDR and LimeSDR drivers.)">;
         if (!_device.get() || !_rxStream.get()) {
             return;
         }
-        soapy::detail::DeviceRegistry::registerActivation(_devKwargs, [this] {
+        detail::DeviceRegistry::registerActivation(_devKwargs, [this] {
             // Multi-channel RX requires a timed stream start for channel
             // alignment.  UHD rejects stream_now=true (flags=0) with
             // "Invalid recv stream command - stream now on multiple channels
@@ -536,11 +536,11 @@ Tested with RTL-SDR and LimeSDR drivers.)">;
 
     void reinitDevice() {
         _rxStream.reset();
-        _devKwargs = soapy::Kwargs{{"driver", device.value}};
+        _devKwargs = Kwargs{{"driver", device.value}};
         if (!device_parameter->empty()) {
-            _devKwargs.merge(soapy::parseKwargsString(device_parameter.value));
+            _devKwargs.merge(parseKwargsString(device_parameter.value));
         }
-        auto devResult = soapy::Device::make(_devKwargs);
+        auto devResult = Device::make(_devKwargs);
         if (!devResult) {
             this->emitErrorMessage("reinitDevice()", devResult.error());
             this->requestStop();
@@ -571,7 +571,7 @@ Tested with RTL-SDR and LimeSDR drivers.)">;
         applyDeviceSettings();
 
         auto        supportedFormats = _device.getStreamFormats(SOAPY_SDR_RX, 0);
-        const char* requestedFormat  = soapy::detail::toSoapySDRFormat<T>();
+        const char* requestedFormat  = detail::toSoapySDRFormat<T>();
         if (!supportedFormats.empty() && std::ranges::find(supportedFormats, std::string(requestedFormat)) == supportedFormats.end()) {
             this->emitErrorMessage("reinitDevice()", std::format("format '{}' not supported (available: {})", requestedFormat, gr::join(supportedFormats, ", ")));
             this->requestStop();
@@ -580,7 +580,7 @@ Tested with RTL-SDR and LimeSDR drivers.)">;
 
         std::vector<gr::Size_t> channelIndices(num_channels);
         std::iota(channelIndices.begin(), channelIndices.end(), gr::Size_t{0});
-        soapy::Kwargs parsedStreamArgs = stream_args->empty() ? soapy::Kwargs{} : soapy::parseKwargsString(stream_args.value);
+        Kwargs parsedStreamArgs = stream_args->empty() ? Kwargs{} : parseKwargsString(stream_args.value);
         auto          streamResult     = _device.setupStream<T, SOAPY_SDR_RX>(channelIndices, parsedStreamArgs);
         if (!streamResult) {
             this->emitErrorMessage("reinitDevice()", std::format("{} (requested: {})", streamResult.error(), requestedFormat));
@@ -646,7 +646,7 @@ Tested with RTL-SDR and LimeSDR drivers.)">;
         if (frequency->empty()) {
             return;
         }
-        soapy::Kwargs tuneArgs;
+        Kwargs tuneArgs;
         if (lo_offset != 0.0) {
             tuneArgs["OFFSET"] = std::to_string(lo_offset.value);
         }
@@ -777,7 +777,7 @@ Tested with RTL-SDR and LimeSDR drivers.)">;
         if (device_settings->empty()) {
             return;
         }
-        for (const auto& [key, value] : soapy::parseKwargsString(device_settings.value)) {
+        for (const auto& [key, value] : parseKwargsString(device_settings.value)) {
             if (auto r = _device.writeSetting(key, value); !r) {
                 this->emitErrorMessage("applyDeviceSettings()", r.error());
             }

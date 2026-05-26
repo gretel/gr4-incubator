@@ -69,9 +69,9 @@ the same driver string, enabling full-duplex TX/RX operation.)">;
 
     GR_MAKE_REFLECTABLE(SoapySink, in, device, device_parameter, master_clock_rate, clock_source, sample_rate, num_channels, tx_antennae, frequency, tx_bandwidths, tx_gains, gain_mode, frequency_correction, dc_offset_mode, dc_offset, iq_balance, time_source, reference_clock_rate, stream_args, tune_args, frontend_mapping, channel_offset, device_settings, max_chunk_size, max_time_out_us, max_underflow_count, verbose_underflow, burst_taper_enabled, burst_ramp_time, burst_taper_type, burst_shape_param, burst_safety_rampdown, timed_tx, tx_start_delay_s, wait_burst_ack, burst_ack_timeout_us);
 
-    soapy::Device                          _device{};
-    soapy::Device::Stream<T, SOAPY_SDR_TX> _txStream{};
-    soapy::Kwargs                          _devKwargs{};
+    Device                          _device{};
+    Device::Stream<T, SOAPY_SDR_TX> _txStream{};
+    Kwargs                          _devKwargs{};
     std::atomic<gr::Size_t>                _underflowCount{0U};
     bool                                   _ioThreadDone = true;
     std::atomic<bool>                      _ioThreadStarted{false};
@@ -113,7 +113,7 @@ the same driver string, enabling full-duplex TX/RX operation.)">;
             _stagingReaders.push_back(_stagingBuffers.back().new_reader());
         }
 
-        soapy::detail::DeviceRegistry::registerActivation(_devKwargs, [this] {
+        detail::DeviceRegistry::registerActivation(_devKwargs, [this] {
             if (auto r = _txStream.activate(); !r) {
                 this->emitErrorMessage("start()", r.error());
                 this->requestStop();
@@ -580,11 +580,11 @@ the same driver string, enabling full-duplex TX/RX operation.)">;
 
     void reinitDevice() {
         _txStream.reset();
-        _devKwargs = soapy::Kwargs{{"driver", device.value}};
+        _devKwargs = Kwargs{{"driver", device.value}};
         if (!device_parameter->empty()) {
-            _devKwargs.merge(soapy::parseKwargsString(device_parameter.value));
+            _devKwargs.merge(parseKwargsString(device_parameter.value));
         }
-        auto devResult = soapy::Device::make(_devKwargs);
+        auto devResult = Device::make(_devKwargs);
         if (!devResult) {
             this->emitErrorMessage("reinitDevice()", devResult.error());
             this->requestStop();
@@ -615,7 +615,7 @@ the same driver string, enabling full-duplex TX/RX operation.)">;
         applyDeviceSettings();
 
         auto        supportedFormats = _device.getStreamFormats(SOAPY_SDR_TX, channel_offset.value);
-        const char* requestedFormat  = soapy::detail::toSoapySDRFormat<T>();
+        const char* requestedFormat  = detail::toSoapySDRFormat<T>();
         if (!supportedFormats.empty() && std::ranges::find(supportedFormats, std::string(requestedFormat)) == supportedFormats.end()) {
             this->emitErrorMessage("reinitDevice()", std::format("TX format '{}' not supported (available: {})", requestedFormat, gr::join(supportedFormats, ", ")));
             this->requestStop();
@@ -624,7 +624,7 @@ the same driver string, enabling full-duplex TX/RX operation.)">;
 
         std::vector<gr::Size_t> channelIndices(num_channels);
         std::iota(channelIndices.begin(), channelIndices.end(), channel_offset.value);
-        soapy::Kwargs parsedStreamArgs = stream_args->empty() ? soapy::Kwargs{} : soapy::parseKwargsString(stream_args.value);
+        Kwargs parsedStreamArgs = stream_args->empty() ? Kwargs{} : parseKwargsString(stream_args.value);
         auto          streamResult     = _device.setupStream<T, SOAPY_SDR_TX>(channelIndices, parsedStreamArgs);
         if (!streamResult) {
             this->emitErrorMessage("reinitDevice()", std::format("{} (requested: {})", streamResult.error(), requestedFormat));
@@ -803,7 +803,7 @@ the same driver string, enabling full-duplex TX/RX operation.)">;
         if (device_settings->empty()) {
             return;
         }
-        for (const auto& [key, value] : soapy::parseKwargsString(device_settings.value)) {
+        for (const auto& [key, value] : parseKwargsString(device_settings.value)) {
             if (auto r = _device.writeSetting(key, value); !r) {
                 this->emitErrorMessage("applyDeviceSettings()", r.error());
             }
