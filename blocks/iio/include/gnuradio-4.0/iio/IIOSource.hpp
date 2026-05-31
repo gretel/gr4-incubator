@@ -25,6 +25,8 @@
 #include <gnuradio-4.0/BlockRegistry.hpp>
 #include <gnuradio-4.0/ValueHelper.hpp>
 
+#include <gnuradio-4.0/algorithm/filter/FilterTool.hpp>
+
 #include <gnuradio-4.0/iio/IIORaiiWrapper.hpp>
 
 namespace gr::incubator::iio {
@@ -76,9 +78,17 @@ struct IIOSource : Block<IIOSource<T>> {
     bool       non_blocking       = false;  ///< true = poll mode; false = blocking refill
     bool       debug              = false;  ///< log per-refill sample count
 
+    // DC blocker (DSP IIR high-pass, matches SoapySource convention)
+    Annotated<bool, "dc_blocker_enabled", Doc<"IIR high-pass to remove DC offset (complex<float> only)">> dc_blocker_enabled = false;
+    Annotated<float, "dc_blocker_cutoff", Unit<"Hz">, Doc<"DC blocker high-pass cutoff frequency">>         dc_blocker_cutoff  = 10.f;
+
+    // Overflow recovery
+    Annotated<bool, "overflow_recovery", Doc<"Attempt device reinit on overflow (vs. throw)">> overflow_recovery = true;
+
     GR_MAKE_REFLECTABLE(IIOSource, out, uri, device, phy_device, channels, attributes,
         center_frequency, sample_rate, bandwidth, gain, gain_mode, rf_port,
-        buffer_size, timeout_ms, max_overflow_count, non_blocking, debug);
+        buffer_size, timeout_ms, max_overflow_count, overflow_recovery,
+        non_blocking, debug, dc_blocker_enabled, dc_blocker_cutoff);
 
     // ---------- lifecycle ---------------------------------------------------
 
@@ -106,6 +116,8 @@ struct IIOSource : Block<IIOSource<T>> {
                 applyAd9361PerChannel();
         }
         if (new_.contains("attributes")) applyAttributes(/*isOutput=*/false);
+        if (new_.contains("dc_blocker_cutoff") || new_.contains("dc_blocker_enabled") || new_.contains("sample_rate"))
+            reinitDcBlocker();
     }
 
     // ---------- processBulk -------------------------------------------------
@@ -159,6 +171,16 @@ struct IIOSource : Block<IIOSource<T>> {
         for (std::size_t i = 0U; i < n; ++i) {
             output[i] = _ring[_ringHead % _ring.size()];
             ++_ringHead;
+        }
+        // Apply DC blocker (if enabled, complex<float> only)
+        if constexpr (std::is_same_v<T, std::complex<float>>) {
+            if (dc_blocker_enabled) {
+                for (std::size_t i = 0U; i < n; ++i) {
+                    const float re = _dcFilterI.processOne(output[i].real());
+                    const float im = _dcFilterQ.processOne(output[i].imag());
+                    output[i] = std::complex<float>(re, im);
+                }
+            }
         }
         output.publish(n);
         compactRing();
@@ -246,6 +268,25 @@ private:
     std::size_t                   _ringTail = 0U;   ///< write cursor (absolute sample index)
     std::size_t                   _overflowCount      = 0;
     std::size_t                   _totalOverflowCount = 0;
+    gr::filter::Filter<float> _dcFilterI;
+    gr::filter::Filter<float> _dcFilterQ;
+
+    void reinitDcBlocker() {
+        if constexpr (std::is_same_v<T, std::complex<float>>) {
+            if (dc_blocker_enabled && dc_blocker_cutoff > 0.f && sample_rate > 0.f) {
+                auto coeffs = gr::filter::iir::designFilter<float>(
+                    gr::filter::Type::HIGHPASS,
+                    gr::filter::FilterParameters{.order = 2UZ, .fHigh = static_cast<double>(dc_blocker_cutoff),
+                                                   .fs = static_cast<double>(sample_rate)},
+                    gr::filter::iir::Design::BUTTERWORTH);
+                _dcFilterI = gr::filter::Filter<float>(coeffs);
+                _dcFilterQ = gr::filter::Filter<float>(coeffs);
+            } else {
+                _dcFilterI = {};
+                _dcFilterQ = {};
+            }
+        }
+    }
 
     [[nodiscard]] bool isAd9361() const noexcept { return phy_device == "ad9361-phy"; }
 
@@ -274,6 +315,7 @@ private:
         applyAttributes(/*isOutput=*/false);
         _buf = detail::Buffer(_streamDev, static_cast<std::size_t>(buffer_size), /*cyclic=*/false);
         _buf.setBlockingMode(!non_blocking);
+        reinitDcBlocker();
     }
 
     void applyAd9361CenterFrequency() {
@@ -341,8 +383,19 @@ private:
         overflowCount.fetch_add(1U, std::memory_order_relaxed);
         if (_overflowCount == 1U || _overflowCount == 10U || _overflowCount == 100U || _overflowCount == 1000U)
             std::fprintf(stderr, "IIOSource: refill error errno=%d (count=%zu, total=%zu)\n", err, _overflowCount, _totalOverflowCount);
-        if (max_overflow_count != 0U && _overflowCount > max_overflow_count)
-            throw gr::exception(std::format("IIOSource: refill overflow threshold exceeded (count=%zu, max=%zu, last errno=%d)", _overflowCount, max_overflow_count, err));
+        if (max_overflow_count != 0U && _overflowCount > max_overflow_count) {
+            if (overflow_recovery) {
+                std::fprintf(stderr, "IIOSource: overflow threshold exceeded — attempting reinit\n");
+                _overflowCount = 0;
+                try {
+                    reinitDevice();
+                } catch (const std::exception& e) {
+                    std::fprintf(stderr, "IIOSource: reinit failed: %s\n", e.what());
+                }
+            } else {
+                throw gr::exception(std::format("IIOSource: refill overflow threshold exceeded (count=%zu, max=%zu, last errno=%d)", _overflowCount, max_overflow_count, err));
+            }
+        }
     }
 };
 
