@@ -1,0 +1,6 @@
+.venv/
+build/
+__pycache__/
+*.pyc
+bsl_batch_*.cpp
+bsl_cue_*.json

@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: ISC
+# prek (pre-commit) configuration for gr4-incubator — block-schema-lint.
+# Run with: prek run --all-files  or  prek run block-schema-lint
+
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: block-schema-lint
+        name: block schema lint (clang)
+        description: Scan + validate GR4 block headers via clang AST
+        entry: bash -c 'cd tools/block-schema-lint && uv run scan_blocks.py ../../blocks/*/include/gnuradio-4.0/*/*.hpp --validate'
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: basedpyright
+        name: basedpyright (Python)
+        description: Type-check Python with basedpyright (fail on errors only, show warnings)
+        entry: bash -c 'cd tools/block-schema-lint && out=$(uv run basedpyright scan_blocks.py 2>&1); echo "$out"; echo "$out" | tail -1 | grep -q "^0 errors" && exit 0 || exit 1'
+        language: system
+        files: ^tools/block-schema-lint/scan_blocks\.py$
+        pass_filenames: false
