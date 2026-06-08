@@ -134,22 +134,11 @@ def _find_resource_dir() -> str:
     """Find clang resource directory.
 
     1. LLVM_RESOURCE_DIR env var
-    2. On macOS, prefer brew's clang over Xcode's (avoids libclang/resource-dir mismatch)
-    3. `clang -print-resource-dir` fallback
+    2. `clang -print-resource-dir` via PATH or common LLVM installation directories
     """
     env = os.environ.get("LLVM_RESOURCE_DIR")
     if env:
         return env
-
-    # On macOS, prefer brew's clang to match brew's libclang
-    brew_clang = "/opt/homebrew/opt/llvm/bin/clang"
-    if IS_MACOS and os.path.isfile(brew_clang):
-        try:
-            result = subprocess.check_output([brew_clang, "-print-resource-dir"], text=True).strip()
-            if result:
-                return result
-        except Exception:
-            pass
 
     clang_path = shutil.which("clang") or next(
         (shutil.which(f"clang-{v}") for v in range(99, 10, -1)),
@@ -198,8 +187,24 @@ def _find_libclang() -> str:
     candidates: list[str] = []
 
     if IS_MACOS:
-        candidates = [
-            "/opt/homebrew/opt/llvm/lib/libclang.dylib",
+        # Try llvm-config --libdir first (find any version with glob)
+        llvm_config = shutil.which("llvm-config")
+        if not llvm_config:
+            for v in range(99, 10, -1):
+                p = shutil.which(f"llvm-config-{v}")
+                if p:
+                    llvm_config = p
+                    break
+        if llvm_config:
+            try:
+                libdir = subprocess.check_output([llvm_config, "--libdir"], text=True).strip()
+                libdir_p = Path(libdir)
+                if libdir_p.is_dir():
+                    for f in sorted(libdir_p.glob("libclang*.dylib"), reverse=True):
+                        candidates.append(str(f))
+            except Exception:
+                pass
+        candidates += [
             "/usr/local/opt/llvm/lib/libclang.dylib",
             "/Library/Developer/CommandLineTools/usr/lib/libclang.dylib",
             "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/libclang.dylib",
@@ -251,7 +256,7 @@ LIBCLANG_PATH = _find_libclang()
 
 import clang.cindex as ci  # noqa: E402  # runtime dep from uv, not system
 
-# Point clang at brew's libclang (or env-overridden path)
+# Point clang at libclang (env var CLANG_LIBRARY_PATH overrides auto-detection)
 ci.Config.set_library_file(LIBCLANG_PATH)
 
 _INDEX = ci.Index.create()
@@ -339,6 +344,20 @@ def discover_project_includes(project_root: str) -> list[str]:
 # ── parsing ────────────────────────────────────────────────────────
 
 
+def _find_libcxx_include() -> str | None:
+    """Find libc++ include dir alongside the detected libclang path."""
+    try:
+        libclang = Path(LIBCLANG_PATH).resolve()
+    except Exception:
+        return None
+    # Walk up from libclang path looking for include/c++/v1
+    for parent in libclang.parents:
+        candidate = parent / "include" / "c++" / "v1"
+        if candidate.is_dir():
+            return str(candidate)
+    return None
+
+
 def _build_clang_args(
     extra_includes: list[str] | None = None,
 ) -> list[str]:
@@ -354,12 +373,12 @@ def _build_clang_args(
         "-x",
         "c++",
     ]
-    # On macOS, ensure brew's libc++ headers are found (libclang may not
+    # On macOS, ensure libc++ headers are found (libclang may not
     # auto-detect the SDK the same way the clang driver does).
     if IS_MACOS:
-        _brew_cxx = "/opt/homebrew/opt/llvm/include/c++/v1"
-        if os.path.isdir(_brew_cxx):
-            args.extend(["-cxx-isystem", _brew_cxx])
+        _llvm_cxx = _find_libcxx_include()
+        if _llvm_cxx:
+            args.extend(["-cxx-isystem", _llvm_cxx])
     for inc in itertools.chain(
         GR4_INCLUDE_PATHS, PROJECT_INCLUDE_PATHS, extra_includes or []
     ):
@@ -1473,7 +1492,7 @@ def main() -> int:
                                 print(f"  {line}", file=sys.stderr)
                 except FileNotFoundError:
                     print(
-                        "cue not found (install: brew install cue-lang/tap/cue)",
+                        "cue not found (see https://cuelang.org/docs/install/)",
                         file=sys.stderr,
                     )
                 finally:

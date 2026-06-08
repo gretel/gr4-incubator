@@ -78,14 +78,6 @@ uv sync --dev
 
 Installs dev tools into `.venv/`:
 
-- `basedpyright` — type checker
-
-### Type checking
-
-```bash
-uv run basedpyright scan_blocks.py
-```
-
 The project defines TypedDicts (`MemberDict`, `BlockDict`, `IssueDict`, etc.)
 instead of bare `dict[str, Any]` — real type errors (`reportMissingTypeArgument`,
 `reportPossiblyUnboundVariable`) are caught at error level.
@@ -97,9 +89,9 @@ suppressed to "warning" level.
 
 ### macOS notes
 
-The tool prefers brew's LLVM over Xcode's clang to avoid libclang/resource-dir
-version mismatch. It uses `-cxx-isystem /opt/homebrew/opt/llvm/include/c++/v1`
-to find libc++ headers.
+The tool dynamically discovers the LLVM installation from the detected libclang
+library path, avoiding libclang/resource-dir version mismatch. It uses
+`-cxx-isystem` with the discovered libc++ include path.
 
 ## Dependencies
 

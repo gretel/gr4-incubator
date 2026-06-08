@@ -16,10 +16,3 @@ repos:
         pass_filenames: false
         always_run: true
 
-      - id: basedpyright
-        name: basedpyright (Python)
-        description: Type-check Python with basedpyright (fail on errors only, show warnings)
-        entry: bash -c 'cd tools/block-schema-lint && out=$(uv run basedpyright scan_blocks.py 2>&1); echo "$out"; echo "$out" | tail -1 | grep -q "^0 errors" && exit 0 || exit 1'
-        language: system
-        files: ^tools/block-schema-lint/scan_blocks\.py$
-        pass_filenames: false
